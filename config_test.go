@@ -2,6 +2,7 @@ package wireproxy
 
 import (
 	"github.com/go-ini/ini"
+	"os"
 	"testing"
 )
 
@@ -83,5 +84,43 @@ Endpoint = 192.200.144.22:51820`
 	err = ParseInterface(iniData, &cfg)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestParseConfigWithSocks5Proxy(t *testing.T) {
+	const config = `
+[Interface]
+PrivateKey = mBsVDahr1XIu9PPd17UmsDdB6E53nvmS47NbNqQCiFM=
+Address = 100.96.0.190/32
+
+[Peer]
+PublicKey = SHnh4C2aDXhp1gjIqceGhJrhOLSeNYcqWLKcYnzj00U=
+Endpoint = 192.200.144.22:51820
+
+[Socks5Proxy]
+Address = 127.0.0.1:1080
+Username = user
+Password = pass
+`
+
+	file, err := os.CreateTemp("", "wireproxy-config-*.conf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(file.Name())
+
+	if _, err := file.WriteString(config); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	parsed, err := ParseConfig(file.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Device.Socks5Proxy == nil {
+		t.Fatal("expected socks5 proxy to be parsed")
 	}
 }

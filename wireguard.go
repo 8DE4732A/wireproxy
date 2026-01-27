@@ -70,7 +70,12 @@ func StartWireguard(conf *DeviceConfig, logLevel int) (*VirtualTun, error) {
 	if err != nil {
 		return nil, err
 	}
-	dev := device.NewDevice(tun, conn.NewDefaultBind(), device.NewLogger(logLevel, ""))
+	bind := conn.NewDefaultBind()
+	if conf.Socks5Proxy != nil {
+		bind = NewSocks5ProxyBind(conf.Socks5Proxy)
+	}
+
+	dev := device.NewDevice(tun, bind, device.NewLogger(logLevel, ""))
 	err = dev.IpcSet(setting.IpcRequest)
 	if err != nil {
 		return nil, err
