@@ -133,6 +133,14 @@ Target = localhost:25545
 [STDIOTunnel]
 Target = ssh.myserver.net:22
 
+# Socks5Proxy sends WireGuard traffic through a downstream socks5 proxy.
+# This is useful when the WireGuard endpoint can only be reached via a proxy.
+[Socks5Proxy]
+Address = 127.0.0.1:1080
+#Username = ...
+# Avoid using spaces in the password field
+#Password = ...
+
 # Socks5 creates a socks5 proxy on your LAN, and all traffic would be routed via wireguard.
 [Socks5]
 BindAddress = 127.0.0.1:25344

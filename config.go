@@ -31,6 +31,7 @@ type DeviceConfig struct {
 	ListenPort         *int
 	CheckAlive         []netip.Addr
 	CheckAliveInterval int
+	Socks5Proxy        *Socks5ProxyConfig
 }
 
 type TCPClientTunnelConfig struct {
@@ -51,6 +52,12 @@ type Socks5Config struct {
 	BindAddress string
 	Username    string
 	Password    string
+}
+
+type Socks5ProxyConfig struct {
+	Address  string
+	Username string
+	Password string
 }
 
 type HTTPConfig struct {
@@ -82,6 +89,19 @@ func parseString(section *ini.Section, keyName string) (string, error) {
 		return value, nil
 	}
 	return key.String(), nil
+}
+
+func parseOptionalString(section *ini.Section, keyName string) (string, bool, error) {
+	if _, err := section.GetKey(keyName); err != nil {
+		return "", false, nil
+	}
+
+	value, err := parseString(section, keyName)
+	if err != nil {
+		return "", false, err
+	}
+
+	return value, true, nil
 }
 
 func parsePort(section *ini.Section, keyName string) (int, error) {
@@ -175,7 +195,7 @@ func parseCIDRNetIP(section *ini.Section, keyName string) ([]netip.Addr, error) 
 		if len(str) == 0 {
 			continue
 		}
-    
+
 		if addr, err := netip.ParseAddr(str); err == nil {
 			ips = append(ips, addr)
 		} else {
@@ -183,7 +203,7 @@ func parseCIDRNetIP(section *ini.Section, keyName string) ([]netip.Addr, error) 
 			if err != nil {
 				return nil, err
 			}
-      
+
 			addr := prefix.Addr()
 			ips = append(ips, addr)
 		}
@@ -435,6 +455,34 @@ func parseHTTPConfig(section *ini.Section) (RoutineSpawner, error) {
 	return config, nil
 }
 
+func parseSocks5ProxyConfig(cfg *ini.File) (*Socks5ProxyConfig, error) {
+	sections, err := cfg.SectionsByName("Socks5Proxy")
+	if err != nil || len(sections) == 0 {
+		return nil, nil
+	}
+	if len(sections) != 1 {
+		return nil, errors.New("one and only one [Socks5Proxy] is expected")
+	}
+
+	section := sections[0]
+	address, err := parseString(section, "Address")
+	if err != nil {
+		return nil, err
+	}
+
+	config := &Socks5ProxyConfig{
+		Address: address,
+	}
+
+	username, _ := parseString(section, "Username")
+	config.Username = username
+
+	password, _ := parseString(section, "Password")
+	config.Password = password
+
+	return config, nil
+}
+
 // Takes a function that parses an individual section into a config, and apply it on all
 // specified sections
 func parseRoutinesConfig(routines *[]RoutineSpawner, cfg *ini.File, sectionName string, f func(*ini.Section) (RoutineSpawner, error)) error {
@@ -490,6 +538,14 @@ func ParseConfig(path string) (*Configuration, error) {
 	err = ParsePeers(wgCfg, &device.Peers)
 	if err != nil {
 		return nil, err
+	}
+
+	proxyConfig, err := parseSocks5ProxyConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
+	if proxyConfig != nil {
+		device.Socks5Proxy = proxyConfig
 	}
 
 	var routinesSpawners []RoutineSpawner
