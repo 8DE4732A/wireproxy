@@ -68,6 +68,9 @@ type socks5ProxyBind struct {
 	udpConn  *net.UDPConn
 	udpRelay *net.UDPAddr
 
+	ctx    context.Context
+	cancel context.CancelFunc
+
 	recvBufPool sync.Pool
 }
 
@@ -97,31 +100,105 @@ func (b *socks5ProxyBind) Open(port uint16) ([]conn.ReceiveFunc, uint16, error) 
 		return nil, 0, err
 	}
 
-	tcpConn, err := net.Dial("tcp", b.proxyAddr)
+	tcpConn, udpRelay, err := b.connect()
 	if err != nil {
 		_ = udpConn.Close()
 		return nil, 0, err
 	}
 
-	udpRelay, err := negotiateSocks5UDP(tcpConn, b.username, b.password)
-	if err != nil {
-		_ = tcpConn.Close()
-		_ = udpConn.Close()
-		return nil, 0, err
-	}
-
+	b.ctx, b.cancel = context.WithCancel(context.Background())
 	b.tcpConn = tcpConn
 	b.udpConn = udpConn
 	b.udpRelay = udpRelay
+
+	go b.monitorTCP(tcpConn)
 
 	actualPort := uint16(udpConn.LocalAddr().(*net.UDPAddr).Port)
 
 	return []conn.ReceiveFunc{b.receive}, actualPort, nil
 }
 
+func (b *socks5ProxyBind) connect() (net.Conn, *net.UDPAddr, error) {
+	tcpConn, err := net.Dial("tcp", b.proxyAddr)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	udpRelay, err := negotiateSocks5UDP(tcpConn, b.username, b.password)
+	if err != nil {
+		_ = tcpConn.Close()
+		return nil, nil, err
+	}
+
+	return tcpConn, udpRelay, nil
+}
+
+func (b *socks5ProxyBind) monitorTCP(conn net.Conn) {
+	defer conn.Close()
+	buf := make([]byte, 1024)
+	for {
+		if _, err := conn.Read(buf); err != nil {
+			conn.Close()
+			b.reconnectLoop()
+			return
+		}
+	}
+}
+
+func (b *socks5ProxyBind) reconnectLoop() {
+	b.mu.Lock()
+	// Check if already closed
+	select {
+	case <-b.ctx.Done():
+		b.mu.Unlock()
+		return
+	default:
+	}
+	// Mark as disconnected
+	b.tcpConn = nil
+	b.udpRelay = nil
+	b.mu.Unlock()
+
+	for {
+		select {
+		case <-b.ctx.Done():
+			return
+		default:
+		}
+
+		tcpConn, udpRelay, err := b.connect()
+		if err == nil {
+			b.mu.Lock()
+			select {
+			case <-b.ctx.Done():
+				b.mu.Unlock()
+				tcpConn.Close()
+				return
+			default:
+				b.tcpConn = tcpConn
+				b.udpRelay = udpRelay
+			}
+			b.mu.Unlock()
+
+			go b.monitorTCP(tcpConn)
+			return
+		}
+
+		select {
+		case <-b.ctx.Done():
+			return
+		case <-time.After(5 * time.Second):
+		}
+	}
+}
+
 func (b *socks5ProxyBind) Close() error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+
+	if b.cancel != nil {
+		b.cancel()
+	}
 
 	var err error
 	if b.tcpConn != nil {
