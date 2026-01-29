@@ -91,19 +91,6 @@ func parseString(section *ini.Section, keyName string) (string, error) {
 	return key.String(), nil
 }
 
-func parseOptionalString(section *ini.Section, keyName string) (string, bool, error) {
-	if _, err := section.GetKey(keyName); err != nil {
-		return "", false, nil
-	}
-
-	value, err := parseString(section, keyName)
-	if err != nil {
-		return "", false, err
-	}
-
-	return value, true, nil
-}
-
 func parsePort(section *ini.Section, keyName string) (int, error) {
 	key := section.Key(keyName)
 	if key == nil {

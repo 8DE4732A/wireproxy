@@ -83,7 +83,7 @@ func (s *MockSocks5Server) handleConnection(t *testing.T, c net.Conn) {
 		return
 	}
 	// No auth
-	c.Write([]byte{0x05, 0x00})
+	_, _ = c.Write([]byte{0x05, 0x00})
 
 	// 2. Request details
 	n, err = c.Read(buf)
@@ -105,10 +105,10 @@ func (s *MockSocks5Server) handleConnection(t *testing.T, c net.Conn) {
 	port := make([]byte, 2)
 	binary.BigEndian.PutUint16(port, uint16(s.udpAddr.Port))
 	resp = append(resp, port...)
-	c.Write(resp)
+	_, _ = c.Write(resp)
 
 	// Keep connection open until closed
-	io.Copy(io.Discard, c)
+	_, _ = io.Copy(io.Discard, c)
 }
 
 func (s *MockSocks5Server) CloseActiveTCPConnections() {

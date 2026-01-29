@@ -81,7 +81,8 @@ func NewSocks5ProxyBind(config *Socks5ProxyConfig) conn.Bind {
 		password:  config.Password,
 		recvBufPool: sync.Pool{
 			New: func() any {
-				return make([]byte, 65535)
+				b := make([]byte, 65535)
+				return &b
 			},
 		},
 	}
@@ -267,8 +268,9 @@ func (b *socks5ProxyBind) receive(packets [][]byte, sizes []int, eps []conn.Endp
 		return 0, net.ErrClosed
 	}
 
-	buf := b.recvBufPool.Get().([]byte)
-	defer b.recvBufPool.Put(buf)
+	bufPtr := b.recvBufPool.Get().(*[]byte)
+	defer b.recvBufPool.Put(bufPtr)
+	buf := *bufPtr
 
 	n, _, err := udpConn.ReadFromUDP(buf)
 	if err != nil {
